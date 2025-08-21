@@ -1,120 +1,257 @@
-// Theme toggle & remember
-const root = document.documentElement;
-const themeToggle = document.getElementById('themeToggle');
-const savedTheme = localStorage.getItem('theme');
-if (savedTheme) root.setAttribute('data-theme', savedTheme);
-themeToggle.addEventListener('click', () => {
-  const next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
-  root.setAttribute('data-theme', next);
-  localStorage.setItem('theme', next);
-});
-
-// Support badge
-const supportBadge = document.getElementById('supportBadge');
-const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-if (SR) {
-  supportBadge.textContent = 'Supported';
-  supportBadge.style.color = 'var(--accent-2)';
-} else {
-  supportBadge.textContent = 'Not supported';
-  supportBadge.style.color = 'var(--danger)';
-}
-
-// Toast
-const toastEl = document.getElementById('toast');
-let toastTimeout;
-function showToast(kind, message, opts={}) {
-  clearTimeout(toastTimeout);
-  toastEl.innerHTML = ''; // clear previous
-  const card = document.createElement('div');
-  card.className = 'card';
-  const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  icon.setAttribute('viewBox','0 0 24 24');
-  icon.classList.add('icon');
-  icon.innerHTML = kind === 'error'
-    ? '<path class="danger" d="M11 15h2v2h-2v-2Zm0-8h2v6h-2V7Zm1-5C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2Z" />'
-    : '<path fill="currentColor" d="M12 2a10 10 0 1 0 10 10A10.011 10.011 0 0 0 12 2Zm-1 15-5-5 1.41-1.41L11 14.17l5.59-5.59L18 10Z"/>';
-  const span = document.createElement('span');
-  span.className = 'msg';
-  span.textContent = message;
-  const close = document.createElement('button');
-  close.className = 'close';
-  close.textContent = '✕';
-  close.addEventListener('click', () => toastEl.innerHTML='');
-  card.append(icon, span, close);
-  toastEl.append(card);
-  toastTimeout = setTimeout(() => { toastEl.innerHTML=''; }, opts.timeout ?? 3500);
-}
-
-// Mic / speech
-const mic = document.getElementById('mic');
-const transcriptEl = document.getElementById('transcript');
-
+// Echo Talk - Pure JS
 let recognition = null;
-let isRecording = false;
-let currentDir = 'rtl'; // default Persian
-if (SR) {
-  recognition = new SR();
-  recognition.lang = 'fa-IR';
-  recognition.interimResults = true;
-  recognition.continuous = false; // stop automatically on pause/silence
-  recognition.addEventListener('result', (e) => {
-    const results = Array.from(e.results);
-    const last = results[results.length-1];
-    const text = results.map(r => r[0].transcript).join(' ');
-    transcriptEl.dir = recognition.lang === 'en-US' ? 'ltr' : 'rtl';
-    transcriptEl.textContent = text;
-    if (last.isFinal) {
-      // auto stop handled by 'end'
-    }
-  });
-  recognition.addEventListener('end', () => {
-    // Auto-stop UI when speech pauses / ends
-    setRecording(false);
-  });
-  recognition.addEventListener('error', (e) => {
-    setRecording(false);
-    showToast('error', 'خطا در تشخیص گفتار: ' + e.error);
-  });
-} else {
-  showToast('error', 'مرورگر از Web Speech پشتیبانی نمی‌کند.');
+let recognizing = false;
+let autosilenceEnabled = false;
+let silenceTimer = null;
+let currentLang = 'fa-IR';
+let installPromptEvent = null;
+
+// Audio level visual with WebAudio (optional nice halo)
+let audioCtx, analyser, micSource;
+const halo = document.getElementById('micHalo');
+
+function updateHaloLevel(level){
+  const scale = 0.9 + Math.min(level, 1) * 0.3;
+  halo.style.transform = `scale(${scale})`;
+  halo.style.opacity = 0.15 + Math.min(level, 1) * 0.85;
 }
 
-// Toggle recording on mic click
-mic.addEventListener('click', async () => {
-  if (!recognition) return;
-  if (isRecording) {
-    recognition.stop();
-    setRecording(false);
-  } else {
-    try {
-      transcriptEl.textContent = '';
-      await startRecognition();
-      setRecording(true);
-    } catch (err) {
-      setRecording(false);
-      showToast('error', 'اجازه میکروفون رد شد یا مشکلی رخ داد.');
+async function setupAudioMeter(){
+  try{
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    micSource = audioCtx.createMediaStreamSource(stream);
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 256;
+    micSource.connect(analyser);
+
+    const dataArray = new Uint8Array(analyser.frequencyBinCount);
+    const tick = () => {
+      analyser.getByteTimeDomainData(dataArray);
+      // Simple RMS
+      let sum = 0;
+      for(let i=0;i<dataArray.length;i++){
+        const v = (dataArray[i]-128)/128;
+        sum += v*v;
+      }
+      const rms = Math.sqrt(sum / dataArray.length); // 0..1
+      updateHaloLevel(rms * 2.2);
+      requestAnimationFrame(tick);
+    };
+    tick();
+  }catch(e){
+    console.warn('Microphone meter disabled:', e);
+  }
+}
+
+function initSpeech(){
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(!SpeechRecognition){
+    setListenState('مرورگر شما از Web Speech API پشتیبانی نمی‌کند.');
+    return;
+  }
+  recognition = new SpeechRecognition();
+  recognition.lang = currentLang;
+  recognition.interimResults = true;
+  recognition.continuous = true;
+
+  recognition.onstart = () => {
+    recognizing = true;
+    document.getElementById('micBtn').classList.add('recording');
+    setListenState('در حال شنیدن…');
+    halo.style.opacity = .85;
+  };
+
+  recognition.onerror = (e) => {
+    console.error('rec error', e);
+    setListenState('خطا در ضبط: ' + e.error);
+    stopRecording();
+  };
+
+  recognition.onend = () => {
+    recognizing = false;
+    document.getElementById('micBtn').classList.remove('recording');
+    if(!autosilenceEnabled){
+      setListenState('متوقف شد.');
+    }else{
+      // if autosilence, show idle
+      setListenState('آماده ضبط');
     }
+    halo.style.opacity = .0;
+    clearTimeout(silenceTimer);
+  };
+
+  recognition.onresult = (e) => {
+    let interim = '';
+    let finalText = '';
+    for(let i = e.resultIndex; i < e.results.length; i++){
+      const transcript = e.results[i][0].transcript;
+      if(e.results[i].isFinal){
+        finalText += transcript + ' ';
+      }else{
+        interim += transcript;
+      }
+    }
+    const full = (document.getElementById('transcript').innerText || '').trim();
+    const preview = (full + ' ' + finalText + ' ' + interim).trim();
+    if(preview){
+      showOutput(preview);
+    }
+
+    // Reset silence timer on any result if autosilence
+    if(autosilenceEnabled){
+      resetSilenceTimer();
+    }
+  };
+}
+
+function startRecording(){
+  if(!recognition){
+    initSpeech();
+    if(!recognition) return;
+  }
+  recognition.lang = currentLang;
+  try{
+    recognition.start();
+  }catch(e){
+    // Safari may throw if already started
+    console.warn(e);
+  }
+  setupAudioMeter();
+  if(autosilenceEnabled){
+    resetSilenceTimer();
+  }
+}
+
+function stopRecording(){
+  if(recognizing && recognition){
+    recognition.stop();
+  }
+  if(audioCtx){
+    audioCtx.close().catch(()=>{});
+    audioCtx = null;
+  }
+}
+
+function resetSilenceTimer(){
+  clearTimeout(silenceTimer);
+  // 3.5 seconds of silence then stop
+  silenceTimer = setTimeout(()=>{
+    stopRecording();
+    setListenState('به دلیل سکوت، ضبط متوقف شد.');
+  }, 3500);
+}
+
+function setListenState(text){
+  document.getElementById('listenState').textContent = text || '';
+}
+
+function showOutput(text){
+  const section = document.getElementById('outputSection');
+  section.classList.remove('hidden');
+  const t = document.getElementById('transcript');
+  t.innerText = text;
+}
+
+// ---- UI wiring ----
+document.getElementById('micBtn').addEventListener('click', ()=>{
+  if(recognizing){
+    stopRecording();
+  }else{
+    autosilenceEnabled = document.getElementById('autoStopToggle').checked;
+    startRecording();
   }
 });
 
-async function startRecognition() {
-  // Switch to EN automatically if user typed "en:" in transcript (optional UX could be added)
-  recognition.start();
+document.getElementById('autoStopToggle').addEventListener('change', (e)=>{
+  autosilenceEnabled = e.target.checked;
+});
+
+document.getElementById('langFa').addEventListener('click', (e)=>{
+  currentLang = 'fa-IR';
+  document.getElementById('langFa').classList.add('active');
+  document.getElementById('langEn').classList.remove('active');
+  setListenState('زبان: فارسی');
+});
+document.getElementById('langEn').addEventListener('click', (e)=>{
+  currentLang = 'en-US';
+  document.getElementById('langEn').classList.add('active');
+  document.getElementById('langFa').classList.remove('active');
+  setListenState('Language: English');
+});
+
+// Edit & Copy
+document.getElementById('editBtn').addEventListener('click', ()=>{
+  const t = document.getElementById('transcript');
+  const editable = t.getAttribute('contenteditable') === 'true';
+  t.setAttribute('contenteditable', !editable);
+  if(!editable){ t.focus(); }
+});
+
+document.getElementById('copyBtn').addEventListener('click', async ()=>{
+  const t = document.getElementById('transcript').innerText;
+  try{
+    await navigator.clipboard.writeText(t);
+    setListenState('کپی شد ✅');
+  }catch{
+    setListenState('اجازه کپی داده نشد');
+  }
+});
+
+// Theme FAB
+const fab = document.getElementById('themeFab');
+fab.addEventListener('click', ()=>{
+  const body = document.body;
+  const toLight = body.classList.contains('dark');
+  body.classList.toggle('dark', !toLight);
+  body.classList.toggle('light', toLight);
+
+  // Swap icons with animation
+  const sun = fab.querySelector('.sun');
+  const moon = fab.querySelector('.moon');
+  if(toLight){
+    // show sun for light
+    sun.classList.remove('hidden');
+    moon.classList.add('hidden');
+  }else{
+    sun.classList.add('hidden');
+    moon.classList.remove('hidden');
+  }
+
+  // playful spin
+  fab.animate([
+    { transform: 'rotate(0deg) scale(1)' },
+    { transform: 'rotate(180deg) scale(1.1)' },
+    { transform: 'rotate(360deg) scale(1)' }
+  ], { duration: 450, easing: 'ease-out' });
+});
+
+// Help modal
+const helpModal = document.getElementById('helpModal');
+document.getElementById('helpBtn').addEventListener('click', ()=> helpModal.showModal());
+document.getElementById('closeHelp').addEventListener('click', ()=> helpModal.close());
+
+// PWA install
+window.addEventListener('beforeinstallprompt', (e)=>{
+  e.preventDefault();
+  installPromptEvent = e;
+  const btn = document.getElementById('installBtn');
+  btn.disabled = false;
+});
+document.getElementById('installBtn').addEventListener('click', async ()=>{
+  if(installPromptEvent){
+    installPromptEvent.prompt();
+    const { outcome } = await installPromptEvent.userChoice;
+    setListenState(outcome === 'accepted' ? 'نصب انجام شد' : 'نصب لغو شد');
+  }
+});
+
+// Service Worker
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('sw.js').catch(console.warn);
+  });
 }
 
-function setRecording(state) {
-  isRecording = state;
-  mic.classList.toggle('recording', state);
-  mic.querySelector('.micLabel').textContent = state ? 'listening…' : 'tap to speak';
-  // Change icon to a solid circle for recording?
-  const icon = mic.querySelector('.icon');
-  icon.innerHTML = state
-    ? '<path d="M12 14a3 3 0 0 0 3-3V7a3 3 0 0 0-6 0v4a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 14 0h-2Zm-5 7a7 7 0 0 0 7-7h-2a5 5 0 1 1-10 0H5a7 7 0 0 0 7 7Zm-1 2h2v2h-2v-2Z"/>'
-    : '<path d="M12 14a3 3 0 0 0 3-3V7a3 3 0 0 0-6 0v4a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 14 0h-2Zm-5 7a7 7 0 0 0 7-7h-2a5 5 0 1 1-10 0H5a7 7 0 0 0 7 7Zm-1 2h2v2h-2v-2Z"/>';
-}
-
-// Optional: service worker registration for PWA
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(()=>{}));
-}
+// Initial text
+setListenState('آماده ضبط');

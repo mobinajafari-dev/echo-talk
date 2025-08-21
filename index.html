@@ -1,43 +1,120 @@
-<!doctype html>
-<html lang="fa" dir="rtl" data-theme="light">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>echo talk</title>
-    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
-    <meta name="theme-color" content="#0b0f19" media="(prefers-color-scheme: dark)">
-    <link rel="manifest" href="/manifest.webmanifest" />
-    <link rel="icon" href="/assets/logo.svg" type="image/svg+xml" />
-    <link rel="apple-touch-icon" sizes="180x180" href="/assets/apple-touch-icon-180.png" />
-    <link rel="stylesheet" href="/style.css" />
-  </head>
-  <body>
-    <header class="topbar">
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Echo Talk</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#0b0b12" />
+  <link rel="icon" href="assets/icon-192.png">
+  <link rel="apple-touch-icon" href="assets/icon-192.png">
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body class="dark">
+  <header class="app-header">
+    <div class="left">
       <div class="brand">
-        <img src="/assets/logo.svg" alt="echo talk logo" class="logo" />
-        <span class="title">echo talk</span>
-        <span id="supportBadge" class="badge">Checking support…</span>
+        <img src="assets/logo.svg" alt="لوگو" class="logo" />
+        <span class="supported-badge" title="Supported">Supported</span>
       </div>
-      <div class="actions">
-        <button id="themeToggle" class="ghost">☀️/🌙</button>
+    </div>
+    <div class="right">
+      <button id="helpBtn" class="ghost-btn" aria-haspopup="dialog" aria-controls="helpModal">راهنما</button>
+      <button id="installBtn" class="ghost-btn" disabled>دانلود PWA</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="recorder-card">
+      <div class="mic-wrap">
+        <div id="micHalo" class="mic-halo"></div>
+        <button id="micBtn" class="mic-btn" aria-pressed="false" aria-label="میکروفون" title="برای شروع/پایان ضبط کلیک کنید">
+          <!-- Microphone SVG -->
+          <svg class="mic-icon" viewBox="0 0 24 24" width="28" height="28" aria-hidden="true">
+            <path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3z"></path>
+            <path d="M19 11a7 7 0 0 1-14 0"></path>
+            <path d="M12 19v3"></path>
+          </svg>
+        </button>
       </div>
-    </header>
+      <div id="listenState" class="listen-state" aria-live="polite"></div>
 
-    <main class="stage">
-      <button id="mic" class="mic" aria-label="شروع ضبط">
-        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M12 14a3 3 0 0 0 3-3V7a3 3 0 0 0-6 0v4a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 14 0h-2Zm-5 7a7 7 0 0 0 7-7h-2a5 5 0 1 1-10 0H5a7 7 0 0 0 7 7Zm-1 2h2v2h-2v-2Z"/>
-        </svg>
-        <span class="micLabel">tap to speak</span>
-      </button>
+      <div class="controls-row">
+        <label class="switch">
+          <input type="checkbox" id="autoStopToggle" />
+          <span class="slider"></span>
+        </label>
+        <span class="switch-label">قطع خودکار وقتی سکوت باشد</span>
+      </div>
 
-      <section class="output" aria-live="polite">
-        <div id="transcript" dir="rtl"></div>
-      </section>
-    </main>
+      <div class="lang-row">
+        <button id="langFa" class="pill-btn active" data-lang="fa-IR" title="تایپ به فارسی">type به فارسی</button>
+        <button id="langEn" class="pill-btn" data-lang="en-US" title="type به انگلیسی">type به انگلیسی</button>
+      </div>
+    </section>
 
-    <div id="toast" class="toast" role="status" aria-live="assertive" aria-atomic="true"></div>
+    <section id="outputSection" class="output-card hidden" aria-live="polite">
+      <div class="output-header">
+        <h2>متن خروجی</h2>
+        <div class="actions">
+          <button id="editBtn" class="icon-btn" title="ویرایش">
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+              <path d="M3 21v-3.75L15.81 4.44a1.5 1.5 0 0 1 2.12 0l2.63 2.63a1.5 1.5 0 0 1 0 2.12L7.75 22H4a1 1 0 0 1-1-1z"></path>
+            </svg>
+          </button>
+          <button id="copyBtn" class="icon-btn" title="کپی">
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+              <path d="M16 16H8V8h8v8z"></path>
+              <path d="M20 8V6a2 2 0 0 0-2-2h-2"></path>
+              <path d="M8 4H6a2 2 0 0 0-2 2v2"></path>
+              <path d="M4 16v2a2 2 0 0 0 2 2h2"></path>
+              <path d="M16 20h2a2 2 0 0 0 2-2v-2"></path>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div id="transcript" class="transcript" contenteditable="false" tabindex="0"></div>
+    </section>
+  </main>
 
-    <script type="module" src="/app.js"></script>
-  </body>
+  <!-- Theme FAB -->
+  <button id="themeFab" class="fab" aria-label="تغییر تم" title="تغییر تم">
+    <span class="fab-icon sun" aria-hidden="true">
+      <!-- Sun icon -->
+      <svg viewBox="0 0 24 24" width="22" height="22">
+        <circle cx="12" cy="12" r="4"></circle>
+        <g><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"></path></g>
+      </svg>
+    </span>
+    <span class="fab-icon moon hidden" aria-hidden="true">
+      <!-- Moon icon -->
+      <svg viewBox="0 0 24 24" width="22" height="22">
+        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+      </svg>
+    </span>
+  </button>
+
+  <!-- Help Modal -->
+  <dialog id="helpModal" class="modal" aria-labelledby="helpTitle">
+    <div class="modal-content">
+      <h2 id="helpTitle">راهنما</h2>
+      <div class="modal-body">
+        <ol>
+          <li>روی دکمه میکروفون کلیک کنید تا ضبط شروع شود. وقتی قرمز شد یعنی در حال ضبط است.</li>
+          <li>می‌توانید زبان تشخیص را با دکمه‌های «type به فارسی» یا «type به انگلیسی» تغییر دهید.</li>
+          <li>اگر «قطع خودکار» فعال باشد، در صورت سکوت چند ثانیه‌ای، ضبط متوقف می‌شود.</li>
+          <li>بعد از تبدیل گفتار به متن، از دکمه‌های «ویرایش» و «کپی» برای مدیریت متن استفاده کنید.</li>
+          <li>از دکمه شناور پایین راست برای تغییر بین تم روشن و تیره استفاده کنید.</li>
+          <li>برای نصب به صورت برنامه (PWA) از دکمه «دانلود PWA» استفاده کنید.</li>
+        </ol>
+      </div>
+      <div class="modal-actions">
+        <button id="closeHelp" class="primary-btn">فهمیدم</button>
+      </div>
+    </div>
+  </dialog>
+
+  <script src="app.js"></script>
+</body>
 </html>
