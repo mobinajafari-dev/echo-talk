@@ -1,0 +1,14 @@
+﻿# Editors
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Builds & tools
+node_modules/
+dist/
+build/
+.cache/
+.netlify/
