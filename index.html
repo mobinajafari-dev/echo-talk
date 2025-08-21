@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="fa" dir="rtl" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>echo talk</title>
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#0b0f19" media="(prefers-color-scheme: dark)">
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/assets/logo.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/assets/logo-512.png" />
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <img src="/assets/logo.svg" alt="echo talk logo" class="logo" />
+        <span class="title">echo talk</span>
+        <span id="supportBadge" class="badge">Checking support…</span>
+      </div>
+      <div class="actions">
+        <button id="themeToggle" class="ghost">☀️/🌙</button>
+      </div>
+    </header>
+
+    <main class="stage">
+      <button id="mic" class="mic" aria-label="شروع ضبط">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 14a3 3 0 0 0 3-3V7a3 3 0 0 0-6 0v4a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 14 0h-2Zm-5 7a7 7 0 0 0 7-7h-2a5 5 0 1 1-10 0H5a7 7 0 0 0 7 7Zm-1 2h2v2h-2v-2Z"/>
+        </svg>
+        <span class="micLabel">tap to speak</span>
+      </button>
+
+      <section class="output" aria-live="polite">
+        <div id="transcript" dir="rtl"></div>
+      </section>
+    </main>
+
+    <div id="toast" class="toast" role="status" aria-live="assertive" aria-atomic="true"></div>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
